@@ -53,6 +53,19 @@ async function run() {
 		const doctorsCollection = client.db("doctorsPortal").collection("doctors");
 		//================================================
 
+		// VerifyAdmin Middleware
+		// make sure you use verifyAdmin After verifyJWT
+		const verifyAdmin = async (req, res, next) => {
+			const decodedEmail = req.decoded.email;
+			const query = { email: decodedEmail };
+			const user = await usersCollection.findOne(query);
+
+			if (user?.role !== "admin") {
+				return res.status(403).send({ message: "Forbidden Access" });
+			}
+			next();
+		};
+
 		// Get Aggregate to query multiple collection and then merge data
 		app.get("/appointmentOptions", async (req, res) => {
 			const date = req.query.date;
@@ -88,14 +101,20 @@ async function run() {
 			res.send(result);
 		});
 		//Doctor Data API
-		app.get("/doctors", async (req, res) => {
+		app.get("/doctors", verifyJwt, verifyAdmin, async (req, res) => {
 			const query = {};
 			const doctors = await doctorsCollection.find(query).toArray();
 			res.send(doctors);
 		});
-		app.post("/doctors", async (req, res) => {
+		app.post("/doctors", verifyJwt, verifyAdmin, async (req, res) => {
 			const doctor = req.body;
 			const result = await doctorsCollection.insertOne(doctor);
+			res.send(result);
+		});
+		app.delete("/doctors/:id", verifyJwt, verifyAdmin, async (req, res) => {
+			const id = req.params.id;
+			const filter = { _id: ObjectId(id) };
+			const result = await doctorsCollection.deleteOne(filter);
 			res.send(result);
 		});
 		// Bookings A
@@ -158,14 +177,7 @@ async function run() {
 		});
 
 		// Admin Make API
-		app.put("/users/admin/:id", verifyJwt, async (req, res) => {
-			const decodedEmail = req.decoded.email;
-			const query = { email: decodedEmail };
-			const user = await usersCollection.findOne(query);
-			if (user.role !== "admin") {
-				return res.status(403).send({ message: "Forbidden Access" });
-			}
-
+		app.put("/users/admin/:id", verifyJwt, verifyAdmin, async (req, res) => {
 			const id = req.params.id;
 			const filter = { _id: ObjectId(id) };
 			const options = { upsert: true };
