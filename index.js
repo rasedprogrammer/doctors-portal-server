@@ -23,6 +23,7 @@ const client = new MongoClient(uri, {
 	serverApi: ServerApiVersion.v1,
 });
 
+// Token VerifyJWT
 function verifyJwt(req, res, next) {
 	const authHeader = req.headers.authorization;
 	if (!authHeader) {
@@ -49,6 +50,7 @@ async function run() {
 			.db("doctorsPortal")
 			.collection("bookings");
 		const usersCollection = client.db("doctorsPortal").collection("users");
+		const doctorsCollection = client.db("doctorsPortal").collection("doctors");
 		//================================================
 
 		// Get Aggregate to query multiple collection and then merge data
@@ -76,6 +78,26 @@ async function run() {
 			res.send(options);
 		});
 
+		// Appointment Specialty Option Get API
+		app.get("/appointmentSpecialty", async (req, res) => {
+			const query = {};
+			const result = await appointmentOptionCollection
+				.find(query)
+				.project({ name: 1 })
+				.toArray();
+			res.send(result);
+		});
+		//Doctor Data API
+		app.get("/doctors", async (req, res) => {
+			const query = {};
+			const doctors = await doctorsCollection.find(query).toArray();
+			res.send(doctors);
+		});
+		app.post("/doctors", async (req, res) => {
+			const doctor = req.body;
+			const result = await doctorsCollection.insertOne(doctor);
+			res.send(result);
+		});
 		// Bookings A
 		app.get("/bookings", verifyJwt, async (req, res) => {
 			const email = req.query.email;
@@ -107,7 +129,7 @@ async function run() {
 		});
 
 		// Users API
-		//JWT
+		//JWT Token Set
 		app.get("/jwt", async (req, res) => {
 			const email = req.query.email;
 			const query = { email: email };
@@ -120,13 +142,22 @@ async function run() {
 			}
 			res.status(403).send({ accessToken: "" });
 		});
-
+		// User Get
 		app.get("/users", async (req, res) => {
 			const query = {};
 			const users = await usersCollection.find(query).toArray();
 			res.send(users);
 		});
 
+		//Admin Login API
+		app.get("/users/admin/:email", async (req, res) => {
+			const email = req.params.email;
+			const query = { email };
+			const user = await usersCollection.findOne(query);
+			res.send({ isAdmin: user?.role === "admin" });
+		});
+
+		// Admin Make API
 		app.put("/users/admin/:id", verifyJwt, async (req, res) => {
 			const decodedEmail = req.decoded.email;
 			const query = { email: decodedEmail };
@@ -151,6 +182,7 @@ async function run() {
 			res.send(result);
 		});
 
+		// User Insert
 		app.post("/users", async (req, res) => {
 			const users = req.body;
 			const result = await usersCollection.insertOne(users);
