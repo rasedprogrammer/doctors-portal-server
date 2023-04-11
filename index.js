@@ -2,7 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
+const nodemailer = require("nodemailer");
+const mg = require("nodemailer-mailgun-transport");
 const jwt = require("jsonwebtoken");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 const port = process.env.PORT || 5000;
 
 const app = express();
@@ -39,6 +43,48 @@ function verifyJwt(req, res, next) {
 	});
 }
 
+function sendBookingEmail(booking) {
+	const { email, treatment, appointmentDate, slot } = booking;
+
+	const auth = {
+		auth: {
+			api_key: process.env.EMAIL_SEND_KEY,
+			domain: process.env.EMAIL_SEND_DOMAIN,
+		},
+	};
+
+	const transporter = nodemailer.createTransport(mg(auth));
+
+	// let transporter = nodemailer.createTransport({
+	// 	host: "smtp.sendgrid.net",
+	// 	port: 587,
+	// 	auth: {
+	// 		user: process.env.SENDGRID_API_KEY,
+	// 		pass: process.env.SENDGRID_API_KEY,
+	// 	},
+	// });
+	transporter.sendMail(
+		{
+			from: "rasedprogrammer@gmail.com", // verified sender email
+			to: email || "rasedprogrammer@gmail.com", // recipient email
+			subject: `Your appointment ${treatment} has been confirmed.`, // Subject line
+			text: "Hello world!", // plain text body
+			html: `
+				<h3>Your appointment is confirm.</h3>
+				<p>Please come ${appointmentDate} at ${slot} for your treatment.</p>
+				<p>Thank You</p>
+			`, // html body
+		},
+		function (error, info) {
+			if (error) {
+				console.log(error);
+			} else {
+				console.log("Email sent: " + info.response);
+			}
+		}
+	);
+}
+
 // Server configuration
 async function run() {
 	try {
@@ -51,6 +97,9 @@ async function run() {
 			.collection("bookings");
 		const usersCollection = client.db("doctorsPortal").collection("users");
 		const doctorsCollection = client.db("doctorsPortal").collection("doctors");
+		const paymentsCollection = client
+			.db("doctorsPortal")
+			.collection("payments");
 		//================================================
 
 		// VerifyAdmin Middleware
@@ -151,6 +200,45 @@ async function run() {
 				return res.send({ acknowledged: false, message });
 			}
 			const result = await bookingsCollection.insertOne(booking);
+			// Send Appointment Confirm Email
+			sendBookingEmail(booking);
+			res.send(result);
+		});
+
+		app.post("/create-payment-intent", async (req, res) => {
+			const booking = req.body;
+			const price = booking.price;
+			const amount = price * 100;
+
+			const paymentIntent = await stripe.paymentIntents.create({
+				amount: amount,
+				currency: "usd",
+				payment_method_types: ["card"],
+			});
+
+			res.send({
+				clientSecret: paymentIntent.client_secret,
+			});
+		});
+
+		app.post("/payments", async (req, res) => {
+			const payment = req.body;
+			console.log(payment);
+			const result = await paymentsCollection.insertOne(payment);
+
+			const id = payment.bookingId;
+			const filter = { _id: ObjectId(id) };
+			const updatedDoc = {
+				$set: {
+					paid: true,
+					transactionId: payment.transactionId,
+				},
+			};
+			const updateResult = await bookingsCollection.updateOne(
+				filter,
+				updatedDoc
+			);
+
 			res.send(result);
 		});
 
