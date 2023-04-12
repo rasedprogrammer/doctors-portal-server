@@ -272,9 +272,11 @@ async function run() {
 		});
 
 		// Admin Make API
-		app.put("/users/admin/:id", verifyJwt, verifyAdmin, async (req, res) => {
+		app.put("/users/admin/:id", async (req, res) => {
 			const id = req.params.id;
+			console.log(id);
 			const filter = { _id: ObjectId(id) };
+			console.log(filter);
 			const options = { upsert: true };
 			const updateDoc = {
 				$set: {
